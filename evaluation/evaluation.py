@@ -35,115 +35,84 @@ def Precision_at_k(recommendations, test_items, k):
     hits = len(set(recommendations[:k]) & set(test_items))
     return hits / k
 
-def eval_recommendation(tgn, data, batch_size, n_neighbors, NUM_NEG_EVAL, is_test_run):
+def eval_recommendation(tgn, data, batch_size, n_neighbors, num_neg_eval, is_test_run):
     with torch.no_grad():
-        tgn = tgn.eval()
-        # While usually the test batch size is as big as it fits in memory, 
-        # here we keep it the same size as the training batch size, since it allows the memory to be updated more frequently,
-        # and later test batches to access information from interactions in previous test batches through the memory
-        TEST_BATCH_SIZE = batch_size
-        num_test_instance = len(data.sources)
-        num_test_batch = math.ceil(num_test_instance / TEST_BATCH_SIZE)
+        tgn.eval()
         
-        """
-        batch iteraction
-        """
-        recalls, ndcgs, mrrs, hits, precisions = [], [], [], [], []
-          
-        for batch in tqdm(range(num_test_batch), desc=f"Progress: Eval Batch"):
-        # for batch in range(num_test_batch):
+        # Initialize metrics
+        recalls = []
+        ndcgs = []
+        mrrs = []
+        hits = []
+        precisions = []
+        
+        num_instance = len(data.sources)
+        num_batch = math.ceil(num_instance / batch_size)
+        
+        for batch in tqdm(range(num_batch), desc="Progress: Eval Batch"):
+            if is_test_run and batch == 2:
+                break
 
-          s_idx = batch * TEST_BATCH_SIZE
-          e_idx = min(num_test_instance, s_idx + TEST_BATCH_SIZE)
+            s_idx = batch * batch_size
+            e_idx = min(num_instance, s_idx + batch_size)
 
-          # 마지막 배치는 건너뛴다
-          if e_idx == num_test_instance:
-            continue
+            sources_batch = data.sources[s_idx:e_idx]
+            destinations_batch = data.destinations[s_idx:e_idx]
+            timestamps_batch = data.timestamps[s_idx:e_idx]
+            edge_idxs_batch = data.edge_idxs[s_idx:e_idx]
 
-          # test run
-          if is_test_run:
-            if batch == 2:
-              break
+            test_rand_sampler = RandEdgeSampler(sources_batch, destinations_batch, seed=2023)
+            negatives_batch = test_rand_sampler.sample(size=num_neg_eval * len(sources_batch))
 
-          # batch data 뽑기: <class 'numpy.ndarray'>
-          sources_batch = data.sources[s_idx:e_idx]           # (BATCH_SIZE,)
-          destinations_batch = data.destinations[s_idx:e_idx] # (BATCH_SIZE,) # item idx
-          timestamps_batch = data.timestamps[s_idx:e_idx]     # (BATCH_SIZE,)
-          edge_idxs_batch = data.edge_idxs[s_idx: e_idx]      # (BATCH_SIZE,)
+            source_embedding, destination_embedding, negative_embedding = tgn.compute_temporal_embeddings_eval(
+                sources_batch,
+                destinations_batch,
+                negatives_batch,
+                timestamps_batch,
+                edge_idxs_batch,
+                n_neighbors,
+                num_neg_eval
+            )
 
-          # negative sampling
-          test_rand_sampler = RandEdgeSampler(sources_batch, destinations_batch, seed=2023)
-          negatives_batch = test_rand_sampler.sample(size=NUM_NEG_EVAL) # (BATCH_SIZE, size) # item idx
+            bsbs = len(sources_batch)
 
-          """
-          node embedding 생성
-          """
-          source_embedding, destination_embedding, negative_embedding = tgn.compute_temporal_embeddings_eval(sources_batch,
-                                                                                                            destinations_batch,
-                                                                                                            negatives_batch.flatten(), # (BATCH_SIZE * size,)
-                                                                                                            timestamps_batch,
-                                                                                                            edge_idxs_batch,
-                                                                                                            n_neighbors)
-          """
-          score 계산
-          """
+            source_embedding = source_embedding.view(bsbs, 1, -1)
+            destination_embedding = destination_embedding.view(bsbs, 1, -1)
+            negative_embedding = negative_embedding.view(bsbs, num_neg_eval, -1)
 
-          bsbs = source_embedding.shape[0] # 마지막 배치는 겨우 23개.. 이 경우 neg item size가 일정하지 않다 
+            pos_scores = torch.sum(source_embedding * destination_embedding, dim=2).cpu().numpy()
+            neg_scores = torch.sum(source_embedding * negative_embedding, dim=2).cpu().numpy()
 
-          # reshape source and destination to (bs, 1, emb_dim) 
-          source_embedding = source_embedding.view(bsbs, 1, -1)
-          destination_embedding = destination_embedding.view(bsbs, 1, -1)
+            for i in range(bsbs):
+                pos_score = pos_scores[i]
+                neg_score = neg_scores[i]
 
-          # reshape negative to (bs, size, emb_dim)
-          negative_embedding = negative_embedding.view(bsbs, NUM_NEG_EVAL, -1)
+                scores = np.concatenate((pos_score, neg_score))
+                ranking = np.argsort(scores)[::-1]
 
-          # scores ( <class 'numpy.ndarray'> )
-          pos_scores = torch.sum(source_embedding * destination_embedding, dim=2).cpu().numpy() # (bs, 1)
-          neg_scores = torch.sum(source_embedding * negative_embedding, dim=2).cpu().numpy()    # (bs, size)
-          
-          """
-          interaction loop
-          """
-          for i in range(bsbs):
+                pos_ranking = [0]
+                topk = [1, 5, 10, 20]
+                recall = [recall_at_k(ranking, pos_ranking, top) for top in topk]
+                ndcg = [ndcg_at_k(ranking, pos_ranking, top) for top in topk]
+                mrr = [MRR_at_k(ranking, pos_ranking, top) for top in topk]
+                hit = [Hit_at_k(ranking, pos_ranking, top) for top in topk]
+                precision = [Precision_at_k(ranking, pos_ranking, top) for top in topk]
 
-            """
-            추천 평가
-            """
+                recalls.append(recall)
+                ndcgs.append(ndcg)
+                mrrs.append(mrr)
+                hits.append(hit)
+                precisions.append(precision)
 
-            # score 통해서 ranking 구하기
-            pos_score = pos_scores[i] # pos score 한 개   <class 'numpy.ndarray'>  (1,)
-            neg_score = neg_scores[i] # neg score size개  <class 'numpy.ndarray'>  (100,)
+        metrics = {
+            'recalls': recalls,
+            'ndcgs': ndcgs,
+            'mrrs': mrrs,
+            'hits': hits,
+            'precisions': precisions
+        }
 
-            scores = np.concatenate((pos_score, neg_score))  # [0.09, 0.88, 0.22, 0.15]
-            ranking = np.argsort(scores)[::-1]               # [1, 2, 3, 0]
-
-            # recall, ndcg 구하기
-            pos_ranking = [0] # ranking에서 pos item의 위치는 항상 0 # 만약 pos item이 여러 개면 pos_ranking = [0, 1, 2, ..., len_pos_item-1]]
-            topk = [1, 5, 10, 20]
-            recall = [recall_at_k(ranking, pos_ranking, top) for top in topk]
-            ndcg = [ndcg_at_k(ranking, pos_ranking, top) for top in topk]
-            mrr = [MRR_at_k(ranking, pos_ranking, top) for top in topk]
-            hit = [Hit_at_k(ranking, pos_ranking, top) for top in topk]
-            precision = [Precision_at_k(ranking, pos_ranking, top) for top in topk]
-
-            """
-            store results
-            """
-            # list len = num_test_batch
-            recalls.append(recall)
-            ndcgs.append(ndcg)
-            mrrs.append(mrr)
-            hits.append(hit)
-            precisions.append(precision)
-
-        eval_dict = {'recalls': recalls,
-                    'ndcgs': ndcgs,
-                    'mrrs': mrrs,
-                    'hits': hits,
-                    'precisions': precisions
-                    }
-
-        return eval_dict 
+        return metrics
 
     
     

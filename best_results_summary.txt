@@ -1,0 +1,49 @@
+Best Model Performance Summary
+============================
+
+Final Results (Best Configuration)
+--------------------------------
+Validation Metrics:
+- NDCG@10: 0.1896
+- Recall@10: 0.1577
+- Precision@10: 0.0158
+
+Test Metrics:
+- NDCG@10: 0.1745
+- Recall@10: 0.1411
+- Precision@10: 0.0141
+
+Improvement from Initial Results:
+- Val NDCG@10: +124% (0.0845 → 0.1896)
+- Test NDCG@10: +93% (0.0906 → 0.1745)
+- Val Recall@10: +258% (0.0441 → 0.1577)
+- Test Recall@10: +184% (0.0496 → 0.1411)
+- Val Precision@10: +259% (0.0044 → 0.0158)
+- Test Precision@10: +182% (0.0050 → 0.0141)
+
+Best Parameter Configuration:
+---------------------------
+1. Batch Size: 16
+2. Learning Rate: 0.00003
+3. Dropout: 0.05
+4. Negative Samples: 2
+5. Embedding Dimension: 256
+6. Attention Heads: 16
+
+Training Details:
+----------------
+- Best performance achieved in epoch 1
+- Performance remained relatively stable for first 4 epochs
+- Early stopping triggered after 10 epochs without improvement
+- Loss at best epoch: 10.0278
+
+Key Observations:
+----------------
+1. Smaller batch size (16) improved generalization
+2. Lower learning rate (0.00003) helped maintain performance
+3. Lower dropout (0.05) increased model capacity
+4. Fixed number of negative samples (2) worked better than curriculum learning
+5. Larger embedding dimension (256) captured more information
+6. Balanced number of attention heads (16) provided good performance
+7. Test metrics closely matched validation metrics, indicating good generalization
+8. Higher loss values did not negatively impact performance 

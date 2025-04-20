@@ -223,74 +223,40 @@ class TGN_CPU(torch.nn.Module):
         self.neighbor_finder = neighbor_finder
         self.embedding_module.neighbor_finder = neighbor_finder
 
-    def compute_temporal_embeddings_eval(self, source_nodes, destination_nodes, negative_nodes, edge_times,
-                                       edge_idxs, n_neighbors=20):
+    def compute_temporal_embeddings_eval(self, source_nodes, destination_nodes, negative_nodes, edge_times, edge_idxs, n_neighbors=20, num_neg_eval=3):
         """
-        Compute temporal embeddings for evaluation.
+        Compute temporal embeddings for sources, destinations, and negatives
         """
-        with torch.no_grad():
-            n_samples = len(source_nodes)
-            nodes = np.concatenate([source_nodes, destination_nodes, negative_nodes])
-            positives = np.concatenate([source_nodes, destination_nodes])
-            
-            timestamps = np.concatenate([edge_times, edge_times, 
-                                       np.repeat(edge_times, len(negative_nodes) // len(source_nodes))])
+        n_samples = len(source_nodes)
+        nodes = np.concatenate([source_nodes, destination_nodes, negative_nodes])
+        positives = np.concatenate([source_nodes, destination_nodes])
+        timestamps = np.concatenate([edge_times, edge_times, np.repeat(edge_times, num_neg_eval)])
 
-            memory = None
-            time_diffs = None
-            if self.use_memory:
-                if self.memory_update_at_start:
-                    memory, last_update = self.get_updated_memory(list(range(self.n_nodes)),
-                                                                self.memory.messages)
-                else:
-                    memory = self.memory.get_memory(list(range(self.n_nodes)))
-                    last_update = self.memory.last_update
+        memory = None
+        time_diffs = None
+        if self.use_memory:
+            if self.memory_update_at_start:
+                # Update memory for all nodes first
+                memory, last_update = self.get_updated_memory(list(range(self.n_nodes)), self.memory.messages)
+            else:
+                memory = self.memory.get_memory(list(range(self.n_nodes)))
+                last_update = self.memory.last_update
 
-                source_time_diffs = torch.LongTensor(edge_times) - last_update[source_nodes].long()
-                source_time_diffs = (source_time_diffs - self.mean_time_shift_src) / self.std_time_shift_src
-                
-                destination_time_diffs = torch.LongTensor(edge_times) - last_update[destination_nodes].long()
-                destination_time_diffs = (destination_time_diffs - self.mean_time_shift_dst) / self.std_time_shift_dst
-                
-                neg_time_diffs = torch.LongTensor(np.repeat(edge_times, len(negative_nodes) // len(source_nodes))) - \
-                                last_update[negative_nodes].long()
-                neg_time_diffs = (neg_time_diffs - self.mean_time_shift_dst) / self.std_time_shift_dst
+            ### Compute differences between the time of current interaction and the time of last update for all nodes
+            timestamps_torch = torch.FloatTensor(timestamps)
+            source_time_diffs = timestamps_torch - last_update[nodes]
+            time_diffs = source_time_diffs.numpy()
 
-                time_diffs = torch.cat([source_time_diffs, destination_time_diffs, neg_time_diffs])
+        # Compute the embeddings using the embedding module
+        node_embedding = self.embedding_module.compute_embedding(memory=memory,
+                                                            source_nodes=nodes,
+                                                            timestamps=timestamps,
+                                                            n_layers=self.n_layers,
+                                                            n_neighbors=n_neighbors,
+                                                            time_diffs=time_diffs)
 
-            # Compute the embeddings using the embedding module
-            node_embedding = self.embedding_module.compute_embedding(memory=memory,
-                                                                  source_nodes=nodes,
-                                                                  timestamps=timestamps,
-                                                                  n_layers=self.n_layers,
-                                                                  n_neighbors=n_neighbors,
-                                                                  time_diffs=time_diffs)
+        source_node_embedding = node_embedding[:n_samples]
+        destination_node_embedding = node_embedding[n_samples:2*n_samples]
+        negative_node_embedding = node_embedding[2*n_samples:]
 
-            source_node_embedding = node_embedding[:n_samples]
-            destination_node_embedding = node_embedding[n_samples:2 * n_samples]
-            negative_node_embedding = node_embedding[2 * n_samples:]
-
-            if self.use_memory:
-                if self.memory_update_at_start:
-                    self.update_memory(positives, self.memory.messages)
-                    self.memory.clear_messages(positives)
-
-                unique_sources, source_id_to_messages = self.get_raw_messages(source_nodes,
-                                                                           source_node_embedding,
-                                                                           destination_nodes,
-                                                                           destination_node_embedding,
-                                                                           edge_times, edge_idxs)
-                unique_destinations, destination_id_to_messages = self.get_raw_messages(destination_nodes,
-                                                                                     destination_node_embedding,
-                                                                                     source_nodes,
-                                                                                     source_node_embedding,
-                                                                                     edge_times, edge_idxs)
-                
-                self.memory.store_raw_messages(unique_sources, source_id_to_messages)
-                self.memory.store_raw_messages(unique_destinations, destination_id_to_messages)
-
-                if not self.memory_update_at_start:
-                    self.update_memory(positives, self.memory.messages)
-                    self.memory.clear_messages(positives)
-
-            return source_node_embedding, destination_node_embedding, negative_node_embedding 
+        return source_node_embedding, destination_node_embedding, negative_node_embedding 

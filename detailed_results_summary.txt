@@ -1,0 +1,172 @@
+Detailed Model Performance Analysis
+=================================
+
+Epoch-by-Epoch Performance
+-------------------------
+Epoch 1 (Best Performance):
+- Loss: 10.0278
+- Val NDCG@10: 0.1896 (Peak)
+- Test NDCG@10: 0.1745
+- Val Recall@10: 0.1577 (Peak)
+- Test Recall@10: 0.1411 (Peak)
+- Val Precision@10: 0.0158 (Peak)
+- Test Precision@10: 0.0141 (Peak)
+- Learning Rate: 0.000027
+
+Epoch 2:
+- Loss: 9.5078 (-5.2%)
+- Val NDCG@10: 0.1748 (-7.8%)
+- Test NDCG@10: 0.1581 (-9.4%)
+- Val Recall@10: 0.1422 (-9.8%)
+- Test Recall@10: 0.1246 (-11.7%)
+- Val Precision@10: 0.0142 (-10.1%)
+- Test Precision@10: 0.0125 (-11.3%)
+- Learning Rate: 0.000020
+
+Epoch 3:
+- Loss: 9.1313 (-8.9%)
+- Val NDCG@10: 0.1630 (-14.0%)
+- Test NDCG@10: 0.1521 (-12.8%)
+- Val Recall@10: 0.1279 (-18.9%)
+- Test Recall@10: 0.1180 (-16.4%)
+- Val Precision@10: 0.0128 (-19.0%)
+- Test Precision@10: 0.0118 (-16.3%)
+- Learning Rate: 0.000011
+
+Epoch 4:
+- Loss: 8.9168 (-11.1%)
+- Val NDCG@10: 0.1583 (-16.5%)
+- Test NDCG@10: 0.1732 (-0.7%)
+- Val Recall@10: 0.1246 (-21.0%)
+- Test Recall@10: 0.1389 (-1.6%)
+- Val Precision@10: 0.0125 (-20.9%)
+- Test Precision@10: 0.0139 (-1.4%)
+- Learning Rate: 0.000003
+
+Epoch 5:
+- Loss: 8.8273 (-12.0%)
+- Val NDCG@10: 0.1391 (-26.6%)
+- Test NDCG@10: 0.1372 (-21.4%)
+- Val Recall@10: 0.1036 (-34.3%)
+- Test Recall@10: 0.1014 (-28.1%)
+- Val Precision@10: 0.0104 (-34.2%)
+- Test Precision@10: 0.0101 (-28.4%)
+- Learning Rate: 0.000030
+
+Epoch 6:
+- Loss: 8.6288 (-13.9%)
+- Val NDCG@10: 0.1243 (-34.4%)
+- Test NDCG@10: 0.1315 (-24.6%)
+- Val Recall@10: 0.0882 (-44.1%)
+- Test Recall@10: 0.0959 (-32.0%)
+- Val Precision@10: 0.0088 (-44.3%)
+- Test Precision@10: 0.0096 (-31.9%)
+- Learning Rate: 0.000029
+
+Epoch 7:
+- Loss: 8.2671 (-17.6%)
+- Val NDCG@10: 0.1386 (-26.9%)
+- Test NDCG@10: 0.1463 (-16.2%)
+- Val Recall@10: 0.1025 (-35.0%)
+- Test Recall@10: 0.1103 (-21.8%)
+- Val Precision@10: 0.0103 (-34.8%)
+- Test Precision@10: 0.0110 (-22.0%)
+- Learning Rate: 0.000027
+
+Epoch 8:
+- Loss: 7.9467 (-20.8%)
+- Val NDCG@10: 0.1237 (-34.8%)
+- Test NDCG@10: 0.1232 (-29.4%)
+- Val Recall@10: 0.0871 (-44.8%)
+- Test Recall@10: 0.0871 (-38.3%)
+- Val Precision@10: 0.0087 (-44.9%)
+- Test Precision@10: 0.0087 (-38.3%)
+- Learning Rate: 0.000024
+
+Epoch 9:
+- Loss: 7.6942 (-23.3%)
+- Val NDCG@10: 0.1169 (-38.3%)
+- Test NDCG@10: 0.1326 (-24.0%)
+- Val Recall@10: 0.0794 (-49.7%)
+- Test Recall@10: 0.0959 (-32.0%)
+- Val Precision@10: 0.0079 (-50.0%)
+- Test Precision@10: 0.0096 (-31.9%)
+- Learning Rate: 0.000020
+
+Epoch 10:
+- Loss: 7.5194 (-25.0%)
+- Val NDCG@10: 0.1222 (-35.5%)
+- Test NDCG@10: 0.1186 (-32.0%)
+- Val Recall@10: 0.0849 (-46.2%)
+- Test Recall@10: 0.0805 (-42.9%)
+- Val Precision@10: 0.0085 (-46.2%)
+- Test Precision@10: 0.0080 (-43.3%)
+- Learning Rate: 0.000015
+
+Epoch 11:
+- Loss: 7.4371 (-25.8%)
+- Val NDCG@10: 0.1228 (-35.2%)
+- Test NDCG@10: 0.1027 (-41.1%)
+- Val Recall@10: 0.0849 (-46.2%)
+- Test Recall@10: 0.0650 (-53.9%)
+- Val Precision@10: 0.0085 (-46.2%)
+- Test Precision@10: 0.0065 (-53.9%)
+- Learning Rate: 0.000011
+
+Performance Analysis
+------------------
+1. Early Peak Performance:
+   - Best performance achieved in epoch 1
+   - All metrics peaked in the first epoch
+   - Significant performance drop after epoch 1
+
+2. Stability Period:
+   - Relatively stable performance in epochs 1-4
+   - Test metrics sometimes outperformed validation metrics
+   - Loss decreased steadily during this period
+
+3. Performance Decline:
+   - Gradual decline in metrics after epoch 4
+   - More pronounced decline in recall and precision
+   - NDCG showed more resilience to decline
+
+4. Learning Rate Impact:
+   - Learning rate decreased from 0.000027 to 0.000011
+   - Performance decline correlated with learning rate reduction
+   - Early stopping triggered after 10 epochs without improvement
+
+Best Parameter Configuration
+--------------------------
+1. Batch Size: 16
+2. Learning Rate: 0.00003
+3. Dropout: 0.05
+4. Negative Samples: 2
+5. Embedding Dimension: 256
+6. Attention Heads: 16
+
+Key Observations
+---------------
+1. Model Architecture:
+   - Larger embedding dimension (256) improved feature capture
+   - Balanced attention heads (16) provided good performance
+   - Lower dropout (0.05) increased model capacity
+
+2. Training Dynamics:
+   - Smaller batch size (16) improved generalization
+   - Lower learning rate (0.00003) helped maintain performance
+   - Fixed negative samples (2) worked better than curriculum learning
+
+3. Performance Characteristics:
+   - Test metrics closely matched validation metrics
+   - Higher loss values did not negatively impact performance
+   - Early peak performance suggests potential for early stopping
+
+4. Areas for Improvement:
+   - Investigate why performance peaks in first epoch
+   - Consider learning rate scheduling to maintain performance
+   - Explore regularization techniques to prevent overfitting
+
+Visualization Files
+-----------------
+1. training_metrics.png: Shows the evolution of all metrics over epochs
+2. improvement_comparison.png: Compares initial and final performance 

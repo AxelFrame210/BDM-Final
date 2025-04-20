@@ -66,51 +66,21 @@ class EarlyStopMonitor(object):
 
 class RandEdgeSampler(object):
   def __init__(self, src_list, dst_list, seed=None):
-    self.seed = None
     self.src_list = src_list
-    self.dst_real_list = dst_list
-    self.dst_list = np.unique(dst_list)
-    # key를 src로, value를 list로 하는 dict
-    self.src_to_dst = {}
-    for src in np.unique(src_list):
-      self.src_to_dst[src] = []
-
+    self.dst_list = dst_list
+    
     if seed is not None:
-      self.seed = seed
-      self.random_state = np.random.RandomState(self.seed)
+      self.random_state = np.random.RandomState(seed)
+    else:
+      self.random_state = np.random.RandomState()
 
   def sample(self, size):
+    if size == 0:
+      return np.array([])
     
-    
-    if self.seed is None:
-      dst_index = []
-      for src, dst in zip(self.src_list, self.dst_real_list): # 유저 한 명씩 돌면서~
-        self.src_to_dst[src].append(dst)
-        current_dst = self.src_to_dst[src]
-        sample_dst = np.random.choice(np.setdiff1d(self.dst_list, current_dst), size=size, replace=False)
-        dst_index.append(sample_dst)
-        
-    else:
-      dst_index = []
-      for src, dst in zip(self.src_list, self.dst_real_list): # 유저 한 명씩 돌면서~
-        self.src_to_dst[src].append(dst)
-        current_dst = self.src_to_dst[src]
-        sample_dst = self.random_state.choice(np.setdiff1d(self.dst_list, current_dst), size=size, replace=False)
-        dst_index.append(sample_dst)
-
-    return np.array(dst_index)
-  
-  #   if self.seed is None:
-  #     # src_index = np.random.randint(0, len(self.src_list), size)
-  #     dst_index = np.random.randint(0, len(self.dst_list), size)
-  #   else:
-  #     # src_index = self.random_state.randint(0, len(self.src_list), size)
-  #     dst_index = self.random_state.randint(0, len(self.dst_list), size)
-  #   print('dst_index size: ',dst_index.shape)
-  #   return self.dst_list[dst_index]
-
-  # def reset_random_state(self):
-  #   self.random_state = np.random.RandomState(self.seed)
+    # Allow replacement in negative sampling
+    sample_dst = self.random_state.choice(self.dst_list, size=size, replace=True)
+    return sample_dst
 
 
 def get_neighbor_finder(data, uniform, max_node_idx=None):
@@ -147,13 +117,15 @@ class NeighborFinder:
 
   def find_before(self, src_idx, cut_time):
     """
-    Extracts all the interactions happening before cut_time for user src_idx in the overall interaction graph. The returned interactions are sorted by time.
-
-    Returns 3 lists: neighbors, edge_idxs, timestamps
-
+    Extracts all the interactions happening before cut_time for user src_idx in the overall interaction graph.
+    The returned interactions are sorted by time.
+    
+    Returns:
+        (neighbors, edge_idxs, timestamps) tuple where the i-th triple
+        corresponds to the i-th temporal neighbor
     """
+    src_idx = int(src_idx)  # Convert numpy.float64 to int
     i = np.searchsorted(self.node_to_edge_timestamps[src_idx], cut_time)
-
     return self.node_to_neighbors[src_idx][:i], self.node_to_edge_idxs[src_idx][:i], self.node_to_edge_timestamps[src_idx][:i]
 
   def get_temporal_neighbor(self, source_nodes, timestamps, n_neighbors=20):

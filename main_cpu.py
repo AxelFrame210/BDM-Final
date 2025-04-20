@@ -33,6 +33,7 @@ parser.add_argument('--embedding_module', type=str, default="graph_attention", c
 parser.add_argument('--memory_updater', type=str, default="gru", choices=["gru", "rnn"], help='Type of memory updater')
 parser.add_argument('--dyrep', action='store_true', help='Whether to run the dyrep model')
 parser.add_argument('--use_destination_embedding_in_message', action='store_true', help='Whether to use the embedding of the destination node as part of the message')
+parser.add_argument('--dropout', type=float, default=0.1, help='Dropout rate')
 # training
 parser.add_argument('--n_epoch', type=int, default=2, help='Number of epochs')
 parser.add_argument('--bs', type=int, default=1000, help='Batch_size')
@@ -53,7 +54,7 @@ BATCH_SIZE = args.bs
 NUM_NEIGHBORS = args.n_degree
 NUM_EPOCH = args.n_epoch
 NUM_HEADS = 2
-DROP_OUT = 0.1
+DROP_OUT = args.dropout
 DATA = args.data
 NUM_LAYER = 1
 LEARNING_RATE = 0.0001
@@ -170,11 +171,8 @@ for epoch in tqdm(range(NUM_EPOCH), desc="Progress: Epoch Loop"):
       
             # candidate sampling
             train_rand_sampler = RandEdgeSampler(sources_batch, destinations_batch)
-            negative_batch = train_rand_sampler.sample(size=NUM_CANDIDATES)
-      
-            # flatten negative_batch
-            negative_batch = np.array([x for y in negative_batch for x in y])
-
+            negative_batch = train_rand_sampler.sample(size=max(NUM_CANDIDATES, len(sources_batch)))
+            
             """
             compute embeddings
             """
@@ -192,7 +190,8 @@ for epoch in tqdm(range(NUM_EPOCH), desc="Progress: Epoch Loop"):
             compute loss
             """
             pos_score = tgn.affinity_score(source_embedding, destination_embedding).squeeze(dim=0)
-            neg_score = tgn.affinity_score(source_embedding.repeat(NUM_CANDIDATES, 1), neg_embedding).squeeze(dim=0)
+            n_neg = len(negative_batch) // len(sources_batch)
+            neg_score = tgn.affinity_score(source_embedding.repeat(n_neg, 1), neg_embedding).squeeze(dim=0)
             
             pos_score = pos_score.sigmoid()
             neg_score = neg_score.sigmoid()
@@ -225,6 +224,60 @@ for epoch in tqdm(range(NUM_EPOCH), desc="Progress: Epoch Loop"):
         "epoch": epoch,
         "loss": np.mean(losses_batch),
     }, open(f"results/{args.prefix}_epoch_{epoch}_eval.pkl", "wb"))
+
+    # Save temporal embeddings
+    tgn.eval()
+    with torch.no_grad():
+        source_embedding, destination_embedding, _ = tgn.compute_temporal_embeddings(
+            train_data.sources,
+            train_data.destinations,
+            [],  # No negative samples
+            train_data.timestamps,
+            train_data.edge_idxs,
+            NUM_NEIGHBORS
+        )
+        train_embeddings = {
+            'user_indices': train_data.sources,
+            'item_indices': train_data.destinations,
+            'labels': np.ones(len(train_data.sources)),  # Positive interactions
+            'temporal_embeddings': torch.cat([source_embedding, destination_embedding], dim=1).cpu().numpy()
+        }
+        
+        source_embedding, destination_embedding, _ = tgn.compute_temporal_embeddings(
+            val_data.sources,
+            val_data.destinations,
+            [],  # No negative samples
+            val_data.timestamps,
+            val_data.edge_idxs,
+            NUM_NEIGHBORS
+        )
+        val_embeddings = {
+            'user_indices': val_data.sources,
+            'item_indices': val_data.destinations,
+            'labels': np.ones(len(val_data.sources)),  # Positive interactions
+            'temporal_embeddings': torch.cat([source_embedding, destination_embedding], dim=1).cpu().numpy()
+        }
+        
+        source_embedding, destination_embedding, _ = tgn.compute_temporal_embeddings(
+            test_data.sources,
+            test_data.destinations,
+            [],  # No negative samples
+            test_data.timestamps,
+            test_data.edge_idxs,
+            NUM_NEIGHBORS
+        )
+        test_embeddings = {
+            'user_indices': test_data.sources,
+            'item_indices': test_data.destinations,
+            'labels': np.ones(len(test_data.sources)),  # Positive interactions
+            'temporal_embeddings': torch.cat([source_embedding, destination_embedding], dim=1).cpu().numpy()
+        }
+        
+        pickle.dump({
+            'train': train_embeddings,
+            'val': val_embeddings,
+            'test': test_embeddings
+        }, open(f"results/{args.data}_tgn_embeddings.pkl", "wb"))
 
     # Save model
     torch.save(tgn.state_dict(), get_checkpoint_path(epoch))

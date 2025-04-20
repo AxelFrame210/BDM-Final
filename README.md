@@ -125,7 +125,7 @@ If you use this code in your research, please cite:
 @software{TGN_Recommender_System,
   author = {AxelFrame210},
   title = {TGN Recommender System},
-  year = {2024},
+  year = {2025},
   publisher = {GitHub},
   journal = {GitHub repository},
   howpublished = {\url{https://github.com/AxelFrame210/BDM-Final}},
