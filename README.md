@@ -1,75 +1,130 @@
-# Temporal Graph Networks for Recommender Systems (TGN-RS)
+# TGN Recommender System
 
-TGN-RS is an advanced recommender system framework that leverages Temporal Graph Networks to provide accurate and time-sensitive recommendations. This model integrates user-item interactions over time, capturing temporal dynamics for improved recommendation performance.
+A Temporal Graph Network (TGN) based recommender system that leverages temporal user-item interactions for personalized recommendations.
+
+## Overview
+
+This project implements a Temporal Graph Network for recommender systems, which:
+
+- Captures temporal dynamics in user-item interactions
+- Uses memory modules to store and update user/item states
+- Leverages graph attention mechanisms for embedding computation
+- Supports various types of user-item interactions (views, add-to-cart, transactions)
 
 ## Dataset
 
-The TGN Recommender System requires a dataset to function properly. You can download the dataset from the following link:
+The project uses a retail e-commerce dataset containing:
 
-[Download Dataset](https://unistackr0-my.sharepoint.com/:f:/g/personal/kimyejin99_unist_ac_kr/EgHSAM0-ikxGsiRsQwrJm5kBGKrgOhP7AxJyOqNpDZzJlQ?e=0KgBqg)
+- User-item interactions (`events.csv`)
+- Item properties (`item_properties_part1.csv`, `item_properties_part2.csv`)
+- Category hierarchy (`category_tree.csv`)
 
-After downloading, place the dataset in the `data` folder at the root of the project directory.
+Dataset statistics:
 
-## Running the Code
+- ~2.7M interactions
+- ~1.4M unique users
+- ~235K unique items
+- Multiple interaction types (view, addtocart, transaction)
+- Temporal properties with Unix timestamps
 
-To run the Temporal Graph Networks (TGN) for Recommender Systems, you will need to execute the `main.py` script with the necessary command-line arguments.
+## Installation
 
-### Basic Usage
-
-At the most basic level, you can run the code without any additional arguments (which will use the default settings):
-
-```bash
-python main.py
-```
-
-### Advanced Usage
-
-For a more advanced setup, you can specify various parameters to customize the training. Here's an example command that utilizes memory, sets the memory updater, the embedding module, and a prefix for saving checkpoints:
+1. Clone the repository:
 
 ```bash
-python main.py --use_memory --memory_updater gru --embedding_module graph_attention --prefix graph_attention_gru_wikipedia --data wikipedia
+git clone [repository-url]
+cd TGN_Rec-1
 ```
 
-Replace gru with the type of RNN you wish to use for the memory updater (e.g., 'rnn', 'lstm'), graph_attention with the type of GNN for the embedding module, and wikipedia with the name of your dataset.
+2. Create and activate a virtual environment:
 
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+```
 
-## Structure
+3. Install dependencies:
 
-The codebase is organized into several key components:
+```bash
+pip install torch torch-geometric numpy pandas
+```
 
-- `evaluation/`: Contains `evaluation.py` for model performance assessment.
-- `model/`: Houses model definitions including `decoder.py`, `temporal_attention.py`, `tgn.py`, and `time_encoding.py`.
-- `module/`: Includes modules such as `embedding_module.py`, `memory.py`, `memory_updater.py`, `message_aggregator.py`, and `message_function.py`.
-- `utils/`: Provides utility scripts like `data.py`, `preprocess_data.py`, and `utils.py`.
-- `main.py`: The main script to run the TGN-RS model.
-- `run.sh`: A shell script to execute the model with predefined settings.
+## Usage
 
-## Model Configuration
+### Data Preprocessing
 
-The Temporal Graph Networks (TGN) for Recommender Systems is configured through a set of command-line arguments. Here are the details of the configurations that can be adjusted:
+1. Place your dataset files in the `new_data` directory:
 
-### Setting
-- `--data`: Dataset name (e.g., 'wikipedia', 'reddit', 'transaction') - the dataset to use.
-- `--gpu`: Index of the GPU to use.
-- `--prefix`: Prefix to name the checkpoints.
+   - `events.csv`
+   - `item_properties_part1.csv`
+   - `item_properties_part2.csv`
+   - `category_tree.csv`
 
-### Model Parameters
-- `--memory_dim`: Dimension of the memory for each user (default: 64).
-- `--n_degree`: Number of neighbors to sample (default: 10).
-- `--embedding_module`: Type of embedding module, options include "graph_attention", "graph_ngcf", "graph_sum", "identity", "time".
-- `--memory_updater`: Type of memory updater, options include "gru", "rnn".
-- `--dyrep`: Flag to run the dyrep model.
-- `--use_destination_embedding_in_message`: Flag to use the destination node's embedding as part of the message.
+2. Run the preprocessing script:
 
-### Training Parameters
-- `--n_epoch`: Number of epochs (default: 2).
-- `--bs`: Batch size (default: 1000).
-- `--num_candidates`: Part of batch items (default: 3).
-- `--num_neg_train`: p_pos and p_neg items (default: 5).
-- `--test_run`: Flag to run only the first two batches for testing.
-- `--use_memory`: Flag to augment the model with a node memory.
+```bash
+python preprocess_retail.py
+```
 
-### Evaluation Parameters
-- `--in_sample`: Flag to use in-sample setting for evaluation.
-- `--num_neg_eval`: Negative items for evaluation (default: 100).
-- `--num_rec`: Top-k items for evaluation (default: 3).
+### Training the Model
+
+Run the CPU version of TGN:
+
+```bash
+python main_cpu.py --data retail \
+                   --use_memory \
+                   --memory_updater gru \
+                   --embedding_module graph_attention \
+                   --prefix retail_run \
+                   --n_epoch 2 \
+                   --bs 32 \
+                   --num_neg_eval 3 \
+                   --n_degree 5 \
+                   --num_candidates 2
+```
+
+### Command Line Arguments
+
+- `--data`: Dataset name (default: 'retail')
+- `--use_memory`: Enable memory module
+- `--memory_updater`: Type of memory updater ('gru' or 'rnn')
+- `--embedding_module`: Type of embedding module ('graph_attention', 'graph_ngcf', 'graph_sum', 'identity', 'time')
+- `--n_epoch`: Number of training epochs
+- `--bs`: Batch size
+- `--num_neg_eval`: Number of negative samples for evaluation
+- `--n_degree`: Number of temporal neighbors
+- `--num_candidates`: Number of candidates per batch
+
+## Model Architecture
+
+The TGN model consists of:
+
+1. Memory Module: Stores and updates user/item states
+2. Message Function: Computes messages between nodes
+3. Message Aggregator: Aggregates messages from neighbors
+4. Embedding Module: Computes node embeddings using graph attention
+5. Memory Updater: Updates node memory based on new interactions
+
+## Performance
+
+The model achieves:
+
+- Training loss: ~1.35
+- Validation NDCG@10: ~0.65
+- Test NDCG@10: ~0.65
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+[Add your license information here]
+
+## Citation
+
+If you use this code in your research, please cite:
+
+```
+[Add citation information]
+```
