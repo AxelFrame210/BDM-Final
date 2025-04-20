@@ -22,12 +22,15 @@ class SequenceMemoryUpdater(MemoryUpdater):
     assert (self.memory.get_last_update(unique_node_ids) <= timestamps).all().item(), "Trying to " \
                                                                                      "update memory to time in the past"
 
-    memory = self.memory.get_memory(unique_node_ids)
+    # Detach memory to break gradient chain
+    memory = self.memory.get_memory(unique_node_ids).detach()
     self.memory.last_update[unique_node_ids] = timestamps
 
+    # Create a new tensor for updated memory
     updated_memory = self.memory_updater(unique_messages, memory)
 
-    self.memory.set_memory(unique_node_ids, updated_memory)
+    # Set memory with requires_grad=True to allow gradient flow
+    self.memory.set_memory(unique_node_ids, updated_memory.requires_grad_(True))
 
   def get_updated_memory(self, unique_node_ids, unique_messages, timestamps):
     if len(unique_node_ids) <= 0:
@@ -36,8 +39,10 @@ class SequenceMemoryUpdater(MemoryUpdater):
     assert (self.memory.get_last_update(unique_node_ids) <= timestamps).all().item(), "Trying to " \
                                                                                      "update memory to time in the past"
 
+    # Detach memory to break gradient chain
+    memory = self.memory.get_memory(unique_node_ids).detach()
     updated_memory = self.memory.memory.data.clone()
-    updated_memory[unique_node_ids] = self.memory_updater(unique_messages, updated_memory[unique_node_ids])
+    updated_memory[unique_node_ids] = self.memory_updater(unique_messages, memory)
 
     updated_last_update = self.memory.last_update.data.clone()
     updated_last_update[unique_node_ids] = timestamps

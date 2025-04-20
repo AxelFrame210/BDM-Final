@@ -24,9 +24,9 @@ class Memory(nn.Module):
     """
     Initializes the memory to all zeros. It should be called at the start of each epoch.
     """
-    # Treat memory as parameter so that it is saved and loaded together with the model
+    # Initialize memory with requires_grad=True to allow gradient flow
     self.memory = nn.Parameter(torch.zeros((self.n_nodes, self.memory_dimension)).to(self.device),
-                               requires_grad=False)
+                               requires_grad=True)
     self.last_update = nn.Parameter(torch.zeros(self.n_nodes).to(self.device),
                                     requires_grad=False)
 
@@ -37,10 +37,12 @@ class Memory(nn.Module):
       self.messages[node].extend(node_id_to_messages[node])
 
   def get_memory(self, node_idxs):
+    # Return a view of the memory to maintain gradient flow
     return self.memory[node_idxs, :]
 
   def set_memory(self, node_idxs, values):
-    self.memory[node_idxs, :] = values
+    # Create a new tensor for the update to maintain gradient flow
+    self.memory.data[node_idxs, :] = values.data
 
   def get_last_update(self, node_idxs):
     return self.last_update[node_idxs]
@@ -48,28 +50,33 @@ class Memory(nn.Module):
   def backup_memory(self):
     messages_clone = {}
     for k, v in self.messages.items():
-      messages_clone[k] = [(x[0].clone(), x[1].clone()) for x in v]
+      messages_clone[k] = [(data.clone(), t) for data, t in v]
 
-    return self.memory.data.clone(), self.last_update.data.clone(), messages_clone
+    return {
+      "memory": self.memory.data.clone(),
+      "last_update": self.last_update.data.clone(),
+      "messages": messages_clone
+    }
 
   def restore_memory(self, memory_backup):
-    self.memory.data, self.last_update.data = memory_backup[0].clone(), memory_backup[1].clone()
+    self.memory.data = memory_backup["memory"].clone()
+    self.last_update.data = memory_backup["last_update"].clone()
 
     self.messages = defaultdict(list)
-    for k, v in memory_backup[2].items():
-      self.messages[k] = [(x[0].clone(), x[1].clone()) for x in v]
+    for k, v in memory_backup["messages"].items():
+      self.messages[k] = [(data.clone(), t) for data, t in v]
 
   def detach_memory(self):
-    self.memory.detach_()
-
-    # Detach all stored messages
-    for k, v in self.messages.items():
-      new_node_messages = []
-      for message in v:
-        new_node_messages.append((message[0].detach(), message[1]))
-
-      self.messages[k] = new_node_messages
+    """
+    Detaches the memory from the computation graph.
+    """
+    self.memory.data = self.memory.data.clone()
+    for k in self.messages:
+      self.messages[k] = [(data.clone().detach(), t) for data, t in self.messages[k]]
 
   def clear_messages(self, nodes):
+    """
+    Clears messages for the nodes in the list.
+    """
     for node in nodes:
       self.messages[node] = []
