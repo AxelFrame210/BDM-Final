@@ -13,11 +13,7 @@ This project implements a Temporal Graph Network for recommender systems, which:
 
 ## Dataset
 
-The project uses a retail e-commerce dataset containing:
-
-- User-item interactions (`events.csv`)
-- Item properties (`item_properties_part1.csv`, `item_properties_part2.csv`)
-- Category hierarchy (`category_tree.csv`)
+The project usses Retail Rocket e-commerce dataset containing. You can download the dataset here: https://www.kaggle.com/datasets/retailrocket/ecommerce-dataset?resource=download
 
 Dataset statistics:
 
@@ -119,12 +115,31 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-[Add your license information here]
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Citation
 
 If you use this code in your research, please cite:
 
+```bibtex
+@software{TGN_Recommender_System,
+  author = {AxelFrame210},
+  title = {TGN Recommender System},
+  year = {2024},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/AxelFrame210/BDM-Final}},
+  version = {1.0.0}
+}
 ```
-[Add citation information]
+
+This implementation is based on the Temporal Graph Networks (TGN) architecture. For more details about the original TGN model, please refer to:
+
+```bibtex
+@inproceedings{rossi2020tgn,
+  title={Temporal Graph Networks for Deep Learning on Dynamic Graphs},
+  author={Rossi, Emanuele and Chamberlain, Ben and Frasca, Fabrizio and Eynard, Davide and Monti, Federico and Bronstein, Michael},
+  booktitle={ICML 2020 Workshop on Graph Representation Learning and Beyond},
+  year={2020}
+}
 ```
