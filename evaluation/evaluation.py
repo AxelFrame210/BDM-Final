@@ -2,37 +2,69 @@ import math
 import random
 import numpy as np
 import torch
+import torch.nn.functional as F
 from tqdm import tqdm
 from sklearn.metrics import average_precision_score, roc_auc_score
 from utils.utils import EarlyStopMonitor, RandEdgeSampler, get_neighbor_finder
 
 
-def recall_at_k(recommendations, test_items, k):
-    hits = len(set(recommendations[:k]) & set(test_items))
-    return hits / min(k, len(test_items))
+def recall_at_k(ranking, pos_items, k):
+    """Calculate Recall@k metric.
+    ranking: array of item indices sorted by score (highest first)
+    pos_items: array/list of positive item indices
+    k: cutoff for ranking
+    """
+    top_k = set(ranking[:k])
+    pos_items = set(pos_items)
+    hits = len(top_k & pos_items)
+    return hits / len(pos_items)
 
-def ndcg_at_k(recommendations, test_items, k):
+def ndcg_at_k(ranking, pos_items, k):
+    """Calculate NDCG@k metric.
+    ranking: array of item indices sorted by score (highest first)
+    pos_items: array/list of positive item indices
+    k: cutoff for ranking
+    """
     dcg = 0
-    idcg = sum([1 / np.log2(i + 2) for i in range(min(k, len(test_items)))])
-    for i, item in enumerate(recommendations[:k]):
-        if item in test_items:
+    idcg = sum([1 / np.log2(i + 2) for i in range(len(pos_items))])
+    if idcg == 0:
+        return 0.0
+    
+    for i, item in enumerate(ranking[:k]):
+        if item in pos_items:
             dcg += 1 / np.log2(i + 2)
     return dcg / idcg
 
-def MRR_at_k(recommendations, test_items, k):
-    for i, item in enumerate(recommendations[:k]):
-        if item in test_items:
+def MRR_at_k(ranking, pos_items, k):
+    """Calculate MRR@k metric.
+    ranking: array of item indices sorted by score (highest first)
+    pos_items: array/list of positive item indices
+    k: cutoff for ranking
+    """
+    for i, item in enumerate(ranking[:k]):
+        if item in pos_items:
             return 1 / (i + 1)
     return 0
 
-def Hit_at_k(recommendations, test_items, k):
-    for i, item in enumerate(recommendations[:k]):
-        if item in test_items:
-            return 1
-    return 0
-  
-def Precision_at_k(recommendations, test_items, k):
-    hits = len(set(recommendations[:k]) & set(test_items))
+def Hit_at_k(ranking, pos_items, k):
+    """Calculate Hit@k metric.
+    ranking: array of item indices sorted by score (highest first)
+    pos_items: array/list of positive item indices
+    k: cutoff for ranking
+    """
+    top_k = set(ranking[:k])
+    pos_items = set(pos_items)
+    return 1.0 if len(top_k & pos_items) > 0 else 0.0
+
+def Precision_at_k(ranking, pos_items, k):
+    """Calculate Precision@k metric.
+    ranking: array of item indices sorted by score (highest first)
+    pos_items: array/list of positive item indices
+    k: cutoff for ranking
+    """
+    top_k = set(ranking[:k])
+    pos_items = set(pos_items)
+    hits = len(top_k & pos_items)
     return hits / k
 
 def eval_recommendation(tgn, data, batch_size, n_neighbors, num_neg_eval, is_test_run):
@@ -80,23 +112,42 @@ def eval_recommendation(tgn, data, batch_size, n_neighbors, num_neg_eval, is_tes
             destination_embedding = destination_embedding.view(bsbs, 1, -1)
             negative_embedding = negative_embedding.view(bsbs, num_neg_eval, -1)
 
+            # Normalize embeddings
+            source_embedding = F.normalize(source_embedding, p=2, dim=2)
+            destination_embedding = F.normalize(destination_embedding, p=2, dim=2)
+            negative_embedding = F.normalize(negative_embedding, p=2, dim=2)
+
+            # Calculate cosine similarity scores
             pos_scores = torch.sum(source_embedding * destination_embedding, dim=2).cpu().numpy()
             neg_scores = torch.sum(source_embedding * negative_embedding, dim=2).cpu().numpy()
 
             for i in range(bsbs):
-                pos_score = pos_scores[i]
-                neg_score = neg_scores[i]
+                pos_score = pos_scores[i].reshape(-1)  # Ensure 1D array
+                neg_score = neg_scores[i]  # Already 1D array
 
-                scores = np.concatenate((pos_score, neg_score))
-                ranking = np.argsort(scores)[::-1]
+                # Combine scores and create ranking
+                all_items = np.concatenate(([destinations_batch[i]], negatives_batch[i * num_neg_eval:(i + 1) * num_neg_eval]))
+                scores = np.concatenate(([pos_score[0]], neg_score))
+                ranking = all_items[np.argsort(-scores)]  # Sort items by scores in descending order
 
-                pos_ranking = [0]
+                # Print debug information for the first few instances
+                if batch == 0 and i < 3:
+                    print(f"\nDebug - Instance {i}:")
+                    print(f"Source: {sources_batch[i]}, Destination: {destinations_batch[i]}")
+                    print(f"Positive score: {pos_score[0]:.4f}")
+                    print(f"Negative scores (first 5): {neg_score[:5]}")
+                    print(f"Ranking (first 10): {ranking[:10]}")
+                    print(f"Position of positive item: {np.where(ranking == destinations_batch[i])[0][0]}")
+
+                # Calculate metrics
+                pos_items = [destinations_batch[i]]  # The actual positive item ID
                 topk = [1, 5, 10, 20]
-                recall = [recall_at_k(ranking, pos_ranking, top) for top in topk]
-                ndcg = [ndcg_at_k(ranking, pos_ranking, top) for top in topk]
-                mrr = [MRR_at_k(ranking, pos_ranking, top) for top in topk]
-                hit = [Hit_at_k(ranking, pos_ranking, top) for top in topk]
-                precision = [Precision_at_k(ranking, pos_ranking, top) for top in topk]
+                
+                recall = [recall_at_k(ranking, pos_items, top) for top in topk]
+                ndcg = [ndcg_at_k(ranking, pos_items, top) for top in topk]
+                mrr = [MRR_at_k(ranking, pos_items, top) for top in topk]
+                hit = [Hit_at_k(ranking, pos_items, top) for top in topk]
+                precision = [Precision_at_k(ranking, pos_items, top) for top in topk]
 
                 recalls.append(recall)
                 ndcgs.append(ndcg)

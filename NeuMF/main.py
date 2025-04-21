@@ -11,7 +11,7 @@ import time
 
 from model.neumf import NeuMF
 from data.data_loader import create_data_loaders
-from evaluation.evaluation import eval_recommendation
+from evaluation.evaluation import evaluate_model
 
 class WeightedBCELoss(nn.Module):
     def __init__(self, pos_weight=2.0, reduction='mean'):
@@ -22,6 +22,10 @@ class WeightedBCELoss(nn.Module):
     def forward(self, pred, target):
         # Add label smoothing
         target = target * 0.9 + 0.05
+        
+        # Add small noise to break ties
+        noise = torch.randn_like(pred) * 0.01
+        pred = pred + noise
         
         # Calculate weighted BCE loss
         loss = -(self.pos_weight * target * torch.log(torch.sigmoid(pred) + 1e-10) + 
@@ -188,13 +192,13 @@ def train_neumf(model, train_loader, val_loader, test_loader, config):
         progress_bar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{config.num_epochs}')
         
         for batch in progress_bar:
-            user_ids, item_ids, labels = batch
-            user_ids = user_ids.to(device)
-            item_ids = item_ids.to(device)
-            labels = labels.float().to(device)
+            user_ids = batch['user'].to(device)
+            item_ids = batch['item'].to(device)
+            labels = batch['label'].to(device)
+            temporal_embeddings = batch['temporal_embedding'].to(device)
             
             # Forward pass
-            pred = model(user_ids, item_ids)
+            pred = model(user_ids, item_ids, temporal_embeddings)
             loss = criterion(pred, labels)
             
             # L2 regularization
@@ -228,8 +232,7 @@ def train_neumf(model, train_loader, val_loader, test_loader, config):
         
         print(f'Epoch {epoch+1}: Loss: {avg_loss:.4f}, '
               f'Val NDCG@10: {val_metrics["ndcg"]:.4f}, Test NDCG@10: {test_metrics["ndcg"]:.4f}, '
-              f'Val Recall@10: {val_metrics["recall"]:.4f}, Test Recall@10: {test_metrics["recall"]:.4f}, '
-              f'Val Precision@10: {val_metrics["precision"]:.4f}, Test Precision@10: {test_metrics["precision"]:.4f}, '
+              f'Val Hit Ratio@10: {val_metrics["hit_ratio"]:.4f}, Test Hit Ratio@10: {test_metrics["hit_ratio"]:.4f}, '
               f'LR: {scheduler.get_last_lr()[0]:.6f}')
         
         # Early stopping check

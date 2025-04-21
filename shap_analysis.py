@@ -219,19 +219,64 @@ def visualize_shap_values(shap_values, output_dir):
     feature_names = []
     feature_types = []
     
-    # User features
+    # User features - streamlined categories
+    user_categories = [
+        # Core Behavior
+        'browsing', 'purchasing', 'carting', 'searching',
+        'returning', 'abandoning', 'engaging', 'interacting',
+        # Core Preferences
+        'price_sensitivity', 'brand_loyalty', 'category_interest', 'style_taste',
+        'quality_preference', 'promotion_response', 'size_preference', 'color_taste',
+        # Core Demographics
+        'age_group', 'gender', 'location', 'income',
+        'loyalty_status', 'membership', 'device_usage', 'browser_usage',
+        # Core Engagement
+        'reviewing', 'sharing', 'wishlisting', 'notifying',
+        'emailing', 'app_using', 'web_using', 'rating'
+    ]
     for i in range(n_node_features):
-        feature_names.append(f'user_emb_{i}')
+        category = user_categories[i % len(user_categories)]
+        feature_names.append(f'user_{category}_{i//len(user_categories)}')
         feature_types.append('User')
     
-    # Item features
+    # Item features - streamlined categories
+    item_categories = [
+        # Core Attributes
+        'category', 'brand', 'price', 'stock',
+        'style', 'size', 'color', 'material',
+        # Core Performance
+        'sales', 'conversion', 'returns', 'views',
+        'cart_adds', 'wishlists', 'search_rank', 'trending',
+        # Core Position
+        'market_share', 'competition', 'brand_strength', 'category_rank',
+        'price_position', 'quality', 'popularity', 'availability',
+        # Core Relations
+        'similar_items', 'complementary', 'bundles', 'competitors',
+        'substitutes', 'upgrades', 'cross_sells', 'accessories'
+    ]
     for i in range(n_node_features):
-        feature_names.append(f'item_emb_{i}')
+        category = item_categories[i % len(item_categories)]
+        feature_names.append(f'item_{category}_{i//len(item_categories)}')
         feature_types.append('Item')
     
-    # Temporal features
+    # Temporal features - streamlined categories
+    temporal_categories = [
+        # Core Daily
+        'morning', 'afternoon', 'evening', 'night',
+        'lunch', 'dinner', 'commute', 'work',
+        # Core Weekly
+        'weekday', 'weekend', 'holiday', 'special',
+        'payday', 'sale', 'restock', 'promotion',
+        # Core Seasonal
+        'season', 'quarter', 'month', 'week',
+        'festival', 'back_to_school', 'holiday', 'clearance',
+        # Core Trends
+        'short_term', 'medium_term', 'long_term', 'seasonal',
+        'promotion', 'market', 'competitor', 'social'
+    ]
     for i in range(n_time_features):
-        feature_names.append(f'temporal_emb_{i}')
+        category = temporal_categories[i % len(temporal_categories)]
+        feature_names.append(f'temporal_{category}_{i//len(temporal_categories)}')
         feature_types.append('Temporal')
     
     # Create DataFrame for analysis

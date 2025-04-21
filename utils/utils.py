@@ -65,22 +65,46 @@ class EarlyStopMonitor(object):
 
 
 class RandEdgeSampler(object):
-  def __init__(self, src_list, dst_list, seed=None):
-    self.src_list = src_list
-    self.dst_list = dst_list
+    def __init__(self, src_list, dst_list, seed=None):
+        self.seed = None
+        self.src_list = np.unique(src_list)
+        self.dst_list = np.unique(dst_list)
+        
+        # Calculate item popularity
+        self.item_popularity = {}
+        for dst in dst_list:
+            self.item_popularity[dst] = self.item_popularity.get(dst, 0) + 1
+        
+        # Calculate sampling probabilities
+        total_interactions = sum(self.item_popularity.values())
+        self.sampling_probs = {
+            dst: (total_interactions - count) / total_interactions
+            for dst, count in self.item_popularity.items()
+        }
+        
+        if seed is not None:
+            self.seed = seed
+            self.random_state = np.random.RandomState(self.seed)
     
-    if seed is not None:
-      self.random_state = np.random.RandomState(seed)
-    else:
-      self.random_state = np.random.RandomState()
-
-  def sample(self, size):
-    if size == 0:
-      return np.array([])
-    
-    # Allow replacement in negative sampling
-    sample_dst = self.random_state.choice(self.dst_list, size=size, replace=True)
-    return sample_dst
+    def sample(self, size):
+        if self.seed is None:
+            src_index = np.random.randint(0, len(self.src_list), size)
+            dst_index = np.random.randint(0, len(self.dst_list), size)
+        else:
+            src_index = self.random_state.randint(0, len(self.src_list), size)
+            dst_index = self.random_state.randint(0, len(self.dst_list), size)
+        
+        # Apply popularity-based sampling
+        dst_candidates = list(self.dst_list)
+        probs = [self.sampling_probs.get(dst, 0.5) for dst in dst_candidates]
+        probs = np.array(probs) / sum(probs)
+        
+        if self.seed is None:
+            dst_index = np.random.choice(len(dst_candidates), size, p=probs)
+        else:
+            dst_index = self.random_state.choice(len(dst_candidates), size, p=probs)
+        
+        return self.dst_list[dst_index]
 
 
 def get_neighbor_finder(data, uniform, max_node_idx=None):

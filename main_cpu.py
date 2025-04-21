@@ -50,16 +50,16 @@ args = parser.parse_args()
 """
 global variables
 """
-BATCH_SIZE = args.bs
+BATCH_SIZE = 128
 NUM_NEIGHBORS = args.n_degree
 NUM_EPOCH = args.n_epoch
-NUM_HEADS = 2
+NUM_HEADS = 8
 DROP_OUT = args.dropout
 DATA = args.data
 NUM_LAYER = 1
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.001
 USE_MEMORY = True
-MEMORY_DIM = args.memory_dim
+MEMORY_DIM = 128
 MESSAGE_DIM = 100
 NUM_CANDIDATES = args.num_candidates
 NUM_NEG_TRAIN = args.num_neg_train
@@ -117,7 +117,24 @@ tgn = TGN_CPU(neighbor_finder=train_ngh_finder, node_features=node_features,
           use_source_embedding_in_message=USE_SOURCE_EMBEDDING_IN_MESSAGE,
           dyrep=args.dyrep)
 
-optimizer = torch.optim.Adam(tgn.parameters(), lr=LEARNING_RATE)
+# Update loss function
+class WeightedBCELoss(torch.nn.Module):
+    def __init__(self, pos_weight=2.0):
+        super().__init__()
+        self.pos_weight = pos_weight
+        
+    def forward(self, pred, target):
+        # Add label smoothing
+        target = target * 0.9 + 0.05
+        
+        # Calculate weighted BCE loss
+        loss = -(self.pos_weight * target * torch.log(torch.sigmoid(pred) + 1e-10) + 
+                (1 - target) * torch.log(1 - torch.sigmoid(pred) + 1e-10))
+        return loss.mean()
+
+# Initialize loss and optimizer
+criterion = WeightedBCELoss(pos_weight=2.0)
+optimizer = torch.optim.AdamW(tgn.parameters(), lr=LEARNING_RATE, weight_decay=0.01)
 
 num_instance = len(train_data.sources)
 num_batch = math.ceil(num_instance / BATCH_SIZE)
@@ -199,9 +216,8 @@ for epoch in tqdm(range(NUM_EPOCH), desc="Progress: Epoch Loop"):
             pos_label = torch.ones_like(pos_score)
             neg_label = torch.zeros_like(neg_score)
             
-            loss_fn = torch.nn.BCELoss()
-            loss += loss_fn(pos_score, pos_label)
-            loss += loss_fn(neg_score, neg_label)
+            loss += criterion(pos_score, pos_label)
+            loss += criterion(neg_score, neg_label)
 
         loss /= BACKPROP_EVERY
         loss.backward(retain_graph=True)
@@ -296,4 +312,6 @@ for epoch in tqdm(range(NUM_EPOCH), desc="Progress: Epoch Loop"):
         print("Early stopping triggered")
         break
 
-    print(f"Epoch {epoch}: train loss: {np.mean(losses_batch):.4f}, val ndcg@10: {val_score:.4f}, test ndcg@10: {test_ndcgs[2]:.4f}") 
+    print(f'Epoch {epoch+1}: train loss: {np.mean(losses_batch):.4f}, '
+          f'val ndcg@10: {val_metrics["ndcgs"][0][2]:.4f}, test ndcg@10: {test_metrics["ndcgs"][0][2]:.4f}, '
+          f'val hr@10: {val_metrics["hits"][0][2]:.4f}, test hr@10: {test_metrics["hits"][0][2]:.4f}') 

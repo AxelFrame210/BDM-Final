@@ -23,7 +23,7 @@ argument
 """
 # setting
 parser = argparse.ArgumentParser('TGN recommender training')
-parser.add_argument('-d', '--data', type=str, help='Dataset name (eg. wikipedia or reddit)', default='transaction')
+parser.add_argument('-d', '--data', type=str, help='Dataset name (eg. wikipedia or reddit)', default='retail')
 parser.add_argument('--gpu', type=int, default=0, help='Idx for the gpu to use')
 parser.add_argument('--prefix', type=str, default='', help='Prefix to name the checkpoints')
 # model 
@@ -101,9 +101,10 @@ mean_time_shift_src, std_time_shift_src, mean_time_shift_dst, std_time_shift_dst
   compute_time_statistics(full_data.sources, full_data.destinations, full_data.timestamps)
 
 # Set device
-device = torch.device('cuda:{}'.format(GPU))
+device = torch.device('cpu' if GPU == -1 else f'cuda:{GPU}')
 gc.collect() # These commands help you when you face CUDA OOM error
-torch.cuda.empty_cache()
+if GPU != -1:
+    torch.cuda.empty_cache()
 
 # Initialize Model
 tgn = TGN(neighbor_finder=train_ngh_finder, node_features=node_features,

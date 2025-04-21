@@ -3,93 +3,106 @@ import numpy as np
 from sklearn.metrics import ndcg_score
 import torch.nn.functional as F
 
-def recall_at_k(recommendations, test_items, k):
-    hits = len(set(recommendations[:k]) & set(test_items))
-    return hits / min(k, len(test_items))
+def hit_ratio_at_k(y_true, y_pred, k=10):
+    """Compute Hit Ratio@k."""
+    # Convert inputs to numpy arrays
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    
+    # Handle scalar values and single-item arrays
+    if y_true.ndim == 0:
+        y_true = np.array([y_true])
+    if y_pred.ndim == 0:
+        y_pred = np.array([y_pred])
+    
+    # Ensure 2D arrays
+    if y_true.ndim == 1:
+        y_true = y_true.reshape(1, -1)
+    if y_pred.ndim == 1:
+        y_pred = y_pred.reshape(1, -1)
+    
+    # Handle empty arrays
+    if y_true.size == 0 or y_pred.size == 0:
+        return 0.0
+    
+    # Get top-k predictions
+    top_k = np.argsort(y_pred, axis=1)[:, -k:]
+    
+    # Check if any true items are in top-k
+    hits = np.array([np.any(np.isin(top_k[i], np.where(y_true[i] > 0)[0])) 
+                    for i in range(len(y_true))])
+    
+    return np.mean(hits)
 
-def precision_at_k(recommendations, test_items, k):
-    hits = len(set(recommendations[:k]) & set(test_items))
-    return hits / k
+def safe_ndcg_score(y_true, y_pred, k=10):
+    """Compute NDCG score safely handling edge cases."""
+    # Convert inputs to numpy arrays
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    
+    # Handle scalar values and single-item arrays
+    if y_true.ndim == 0:
+        y_true = np.array([y_true])
+    if y_pred.ndim == 0:
+        y_pred = np.array([y_pred])
+    
+    # Ensure 2D arrays
+    if y_true.ndim == 1:
+        y_true = y_true.reshape(1, -1)
+    if y_pred.ndim == 1:
+        y_pred = y_pred.reshape(1, -1)
+    
+    # Handle empty arrays
+    if y_true.size == 0 or y_pred.size == 0:
+        return 0.0
+    
+    # Calculate DCG
+    order = np.argsort(y_pred, axis=1)[:, ::-1]
+    y_true_sorted = np.take_along_axis(y_true, order, axis=1)
+    gains = 2 ** y_true_sorted - 1
+    discounts = np.log2(np.arange(2, y_true.shape[1] + 2))
+    dcg = np.sum(gains[:, :k] / discounts[:k], axis=1)
+    
+    # Calculate IDCG
+    ideal_order = np.argsort(y_true, axis=1)[:, ::-1]
+    ideal_gains = 2 ** np.take_along_axis(y_true, ideal_order, axis=1) - 1
+    idcg = np.sum(ideal_gains[:, :k] / discounts[:k], axis=1)
+    
+    # Avoid division by zero
+    idcg[idcg == 0] = 1
+    
+    # Calculate NDCG
+    ndcg = dcg / idcg
+    return np.mean(ndcg)
 
-def eval_recommendation(model, data_loader, device, k=10, num_neg=100):
+def evaluate_model(model, data_loader, device, k=10):
+    """Evaluate model performance."""
     model.eval()
     all_predictions = []
     all_labels = []
     
     with torch.no_grad():
         for batch in data_loader:
-            user = batch['user'].to(device)
-            item = batch['item'].to(device)
-            label = batch['label'].to(device)
-            temporal_embedding = batch['temporal_embedding'].to(device)
+            # Move batch to device
+            batch = {k: v.to(device) for k, v in batch.items()}
             
-            # Generate negative samples
-            batch_size = user.size(0)
-            neg_items = torch.randint(0, model.num_items, (batch_size, num_neg), device=device)
-            neg_users = user.unsqueeze(1).repeat(1, num_neg)
+            # Get predictions
+            predictions = model(batch)
+            labels = batch['label']
             
-            # Repeat temporal embeddings for negative samples
-            temporal_embedding_neg = temporal_embedding.unsqueeze(1).repeat(1, num_neg, 1)
-            temporal_embedding_neg = temporal_embedding_neg.view(-1, temporal_embedding.size(-1))
-            
-            # Get predictions for positive and negative samples
-            pos_pred = model(user, item, temporal_embedding)
-            neg_pred = model(
-                neg_users.view(-1),
-                neg_items.view(-1),
-                temporal_embedding_neg
-            ).view(batch_size, num_neg)
-            
-            # Apply temperature scaling
-            temperature = 0.1
-            pos_pred = pos_pred / temperature
-            neg_pred = neg_pred / temperature
-            
-            # Combine predictions and apply sigmoid
-            all_pred = torch.cat([pos_pred.unsqueeze(1), neg_pred], dim=1)
-            all_pred = torch.sigmoid(all_pred)
-            
-            all_label = torch.zeros_like(all_pred)
-            all_label[:, 0] = 1  # First item is positive
-            
-            all_predictions.extend(all_pred.cpu().numpy())
-            all_labels.extend(all_label.cpu().numpy())
+            # Collect predictions and labels
+            all_predictions.append(predictions.cpu().numpy())
+            all_labels.append(labels.cpu().numpy())
     
-    all_predictions = np.array(all_predictions)
-    all_labels = np.array(all_labels)
+    # Concatenate all predictions and labels
+    predictions = np.concatenate(all_predictions, axis=0)
+    labels = np.concatenate(all_labels, axis=0)
     
     # Calculate metrics
-    ndcg_scores = []
-    recall_scores = []
-    precision_scores = []
+    ndcg = safe_ndcg_score(labels, predictions, k)
+    hit_ratio = hit_ratio_at_k(labels, predictions, k)
     
-    for i in range(len(all_predictions)):
-        predictions = all_predictions[i]
-        labels = all_labels[i]
-        
-        # Get top-k recommendations
-        top_k_indices = np.argsort(predictions)[::-1][:k]
-        recommendations = top_k_indices
-        test_items = np.where(labels == 1)[0]
-        
-        # Calculate metrics
-        ndcg_scores.append(ndcg_score(labels.reshape(1, -1), predictions.reshape(1, -1), k=k))
-        recall_scores.append(recall_at_k(recommendations, test_items, k))
-        precision_scores.append(precision_at_k(recommendations, test_items, k))
-    
-    # Average metrics
-    ndcg = np.mean(ndcg_scores)
-    recall = np.mean(recall_scores)
-    precision = np.mean(precision_scores)
-    
-    # Add standard deviation for uncertainty estimation
-    metrics = {
-        'ndcg@10': ndcg,
-        'ndcg@10_std': np.std(ndcg_scores),
-        'recall@10': recall,
-        'recall@10_std': np.std(recall_scores),
-        'precision@10': precision,
-        'precision@10_std': np.std(precision_scores)
-    }
-    
-    return metrics 
+    return {
+        f'ndcg@{k}': ndcg,
+        f'hit_ratio@{k}': hit_ratio
+    } 
